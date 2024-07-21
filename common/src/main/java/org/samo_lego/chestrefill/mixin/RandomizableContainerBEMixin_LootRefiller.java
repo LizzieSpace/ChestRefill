@@ -53,10 +53,12 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
     @Shadow
     @Nullable
     protected ResourceKey<LootTable> lootTable;
+
     @Unique
     private ResourceKey<LootTable> savedLootTable;
 
-    @Shadow protected long lootTableSeed;
+    @Shadow
+    protected long lootTableSeed;
 
     @Shadow
     public abstract void setLootTable(ResourceKey<LootTable> resourceKey);
