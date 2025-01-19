@@ -127,19 +127,8 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
      * @return true if the loot table was successfully loaded and set, false otherwise.
      */
     public boolean tryLoadLootTable(@NotNull CompoundTag compoundTag) {
-        if (compoundTag.contains(LOOT_TABLE_TAG, 8)) {
-            this.setLootTable(ResourceKey.create(Registries.LOOT_TABLE, ResourceLocation.parse(compoundTag.getString(LOOT_TABLE_TAG))));
-            if (compoundTag.contains(LOOT_TABLE_SEED_TAG, 4)) {
-                this.setLootTableSeed(compoundTag.getLong(LOOT_TABLE_SEED_TAG));
-            } else {
-                this.setLootTableSeed(0L);
-            }
-            this.onLootTableLoad(compoundTag);
-            return true;
-        } else {
-            this.onLootTableLoad(compoundTag);
-            return false;
-        }
+        this.onLootTableLoad(compoundTag);
+        return RandomizableContainer.super.tryLoadLootTable(compoundTag);
     }
 
     /**
