@@ -1,5 +1,6 @@
 package org.samo_lego.chestrefill.mixin;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -8,7 +9,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.RandomizableContainer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.loot.LootTable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -25,32 +29,33 @@ import static org.samo_lego.chestrefill.PlatformHelper.hasPermission;
 
 
 /**
- * RandomizableContainerBEMixin_LootRefiller is a mixin class that implements the RandomizableContainer interface for
+ * <b>RandomizableContainerBEMixin_LootRefiller</b> is a mixin class that extends {@link BaseContainerBlockEntity} and
+ * implements the {@link RandomizableContainer} interface for
  * BlockEntities (BEs) that can have loot tables and can be refilled with loot.
  * It provides methods to refill the container's loot table, save and load the loot table, and modify the refill behavior of the container.
  * The class relies on a configuration file to customize the refill behavior of each specific loot table and each container.
  * This class should not be instantiated directly, instead, it should be mixed into specific BE classes that implement the RandomizableContainer interface.
  * <p>
  * This class uses mixin annotations to redirect and inject methods from the original class.
- *
- * @remarks This documentation is generated automatically and may contain errors or inconsistencies.
  */
 @SuppressWarnings("AddedMixinMembersNamePattern")
 @Mixin(value = RandomizableContainerBlockEntity.class, remap = false)
-public abstract class RandomizableContainerBEMixin_LootRefiller implements RandomizableContainer {
+public abstract class RandomizableContainerBEMixin_LootRefiller extends BaseContainerBlockEntity implements RandomizableContainer {
+    protected RandomizableContainerBEMixin_LootRefiller(
+            BlockEntityType<?> type,
+            BlockPos pos,
+            BlockState blockState
+           ) {
+        super(type, pos, blockState);
+    }
 
+// =-=-=-=-= Shadows =-=-=-=-=
     @Shadow
     @Nullable
     protected ResourceKey<LootTable> lootTable;
 
-    @Unique
-    private ResourceKey<LootTable> savedLootTable;
-
     @Shadow
     protected long lootTableSeed;
-
-    @Unique
-    private final Set<String> lootedUUIDs = new HashSet<>();
 
     @Shadow
     public abstract void setLootTable(ResourceKey<LootTable> resourceKey);
@@ -58,8 +63,12 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
     @Shadow
     public abstract void setLootTableSeed(long l);
 
-    @Shadow
-    public abstract boolean isEmpty();
+// =-=-=-=-= Unique Vars =-=-=-=-=
+    @Unique
+    private ResourceKey<LootTable> savedLootTable;
+
+    @Unique
+    private final Set<String> lootedUUIDs = new HashSet<>();
 
     @Unique
     private long savedLootTableSeed, lastRefillTime, minWaitTime;
@@ -70,6 +79,7 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
     @Unique
     private int refillCounter, maxRefills;
 
+// =-=-=-=-= Injections/Overrides =-=-=-=-=
     @Inject(method = "<init>", at = @At("RETURN"))
     private void onInit(CallbackInfo ci) {
         this.maxRefills = config.defaultProperties.maxRefills;
@@ -89,10 +99,63 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
         RandomizableContainer.super.unpackLootTable(player);
     }
 
+    public boolean tryLoadLootTable(@NotNull CompoundTag compoundTag) {
+        this.onLootTableLoad(compoundTag);
+        return RandomizableContainer.super.tryLoadLootTable(compoundTag);
+    }
+
+    public boolean trySaveLootTable(CompoundTag compoundTag) {
+        this.onLootTableSave(compoundTag);
+        return RandomizableContainer.super.trySaveLootTable(compoundTag);
+    }
+
+// =-=-=-=-= Unique Checker Methods =-=-=-=-=
+    /**
+     * Whether container can be refilled for given player.
+     * <p>
+     * Checks for Player permissions,
+     * wether the storage can be refilled
+     * and whether enough time has passed since last refill.
+     *
+     * @param player player to check refilling for.
+     * @return true if all checks succeed, otherwise false.
+     * @see RandomizableContainerBEMixin_LootRefiller#canStillRefill
+     * @see RandomizableContainerBEMixin_LootRefiller#hasEnoughTimePassed
+     * @see RandomizableContainerBEMixin_LootRefiller#refillLootTable(Player)
+     */
+    @Unique
+    private boolean canRefillFor(@NotNull Player player) {
+        boolean relootPermission = hasPermission(player.createCommandSourceStack(), "chestrefill.allowReloot", this.allowRelootByDefault) || !this.lootedUUIDs.contains(player.getStringUUID());
+        return this.canStillRefill() && this.hasEnoughTimePassed() && relootPermission;
+    }
+
+
+    /**
+     * Whether this container hasn't reached max refills yet.
+     * @return true if container can still be refilled, false if refills is more than max refills.
+     */
+    @Unique
+    private boolean canStillRefill() {
+        return this.refillCounter < this.maxRefills || this.maxRefills == -1;
+    }
+
+    /**
+     * Tells whether enough time has passed since previous refill.
+     * @return true if container can already be refilled, otherwise false.
+     */
+    @Unique
+    private boolean hasEnoughTimePassed() {
+        // * 1000 as seconds are used in config.
+        return System.currentTimeMillis() - this.lastRefillTime > this.minWaitTime * 1000;
+    }
+
+// =-=-=-=-= Unique ChestRefill Methods =-=-=-=-=
     /**
      * Refills the loot table of the container.
      *
      * @param player The player opening the container. Can be null.
+     * @see RandomizableContainerBEMixin_LootRefiller#canRefillFor(Player)
+     * @see RandomizableContainerBEMixin_LootRefiller#unpackLootTable(Player)
      */
     @Unique
     private void refillLootTable(@Nullable Player player) {
@@ -118,17 +181,6 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
                 }
             }
         }
-    }
-
-    /**
-     * Tries to load the loot table from the given compound tag and sets it to the container.
-     *
-     * @param compoundTag The compound tag containing the loot table information.
-     * @return true if the loot table was successfully loaded and set, false otherwise.
-     */
-    public boolean tryLoadLootTable(@NotNull CompoundTag compoundTag) {
-        this.onLootTableLoad(compoundTag);
-        return RandomizableContainer.super.tryLoadLootTable(compoundTag);
     }
 
     /**
@@ -184,17 +236,6 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
     }
 
     /**
-     * Tries to save the loot table information to a CompoundTag.
-     *
-     * @param compoundTag The CompoundTag to save the loot table information to.
-     * @return true if the loot table was successfully saved, false otherwise.
-     */
-    public boolean trySaveLootTable(CompoundTag compoundTag) {
-        this.onLootTableSave(compoundTag);
-        return RandomizableContainer.super.trySaveLootTable(compoundTag);
-    }
-
-    /**
      * Saves the loot table information to a CompoundTag.
      *
      * @param compoundTag The CompoundTag to save the loot table information to.
@@ -228,36 +269,5 @@ public abstract class RandomizableContainerBEMixin_LootRefiller implements Rando
 
             compoundTag.put("ChestRefill", refillTag);
         }
-    }
-
-    /**
-     * Whether container can be refilled for given player.
-     * @param player player to check refilling for.
-     * @return true if refilling can happen, otherwise false.
-     */
-    @Unique
-    private boolean canRefillFor(@NotNull Player player) {
-        boolean relootPermission = hasPermission(player.createCommandSourceStack(), "chestrefill.allowReloot", this.allowRelootByDefault) || !this.lootedUUIDs.contains(player.getStringUUID());
-        return this.canStillRefill() && this.hasEnoughTimePassed() && relootPermission;
-    }
-
-
-    /**
-     * Whether this container hasn't reached max refills yet.
-     * @return true if container can still be refilled, false if refills is more than max refills.
-     */
-    @Unique
-    private boolean canStillRefill() {
-        return this.refillCounter < this.maxRefills || this.maxRefills == -1;
-    }
-
-    /**
-     * Tells whether enough time has passed since previous refill.
-     * @return true if container can already be refilled, otherwise false.
-     */
-    @Unique
-    private boolean hasEnoughTimePassed() {
-        // * 1000 as seconds are used in config.
-        return System.currentTimeMillis() - this.lastRefillTime > this.minWaitTime * 1000;
     }
 }
