@@ -161,7 +161,7 @@ public abstract class RandomizableContainerBEMixin_LootRefiller extends BaseCont
     private void refillLootTable(@Nullable Player player) {
         if (player != null) {
             if (this.lootTable == null && this.savedLootTable != null) {
-                boolean empty = isEmpty() || this.refillFull;
+                boolean empty = super.isEmpty() || this.refillFull;
                 if (empty && this.canRefillFor(player)) {
                     this.lootedUUIDs.add(player.getStringUUID());
                     // Refilling for player
@@ -246,7 +246,7 @@ public abstract class RandomizableContainerBEMixin_LootRefiller extends BaseCont
             // Save only if chest was looted (if there's no more original loot table)
             CompoundTag refillTag = new CompoundTag();
 
-            refillTag.putString("SavedLootTable", this.savedLootTable.toString());
+            refillTag.putString("SavedLootTable", this.savedLootTable.location().toString());
             refillTag.putLong("SavedLootTableSeed", this.savedLootTableSeed);
             refillTag.putInt("RefillCounter", this.refillCounter);
             refillTag.putLong("LastRefillTime", this.lastRefillTime);
